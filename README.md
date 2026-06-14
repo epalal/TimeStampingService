@@ -10,7 +10,7 @@ to the service and request protected timestamping operations:
 - <hash, time, signature> ß Timestamp(hash), with signature the digital signature by the service on the bundle (hash || time). The operation fails if the user has exhausted their timestamp volume.
 - (nc, nr) ß Balance() which returns the number of timestamps the user has already consumed and the number of timestamps the user can still request.
 
-The timestamp service is equipped with two pairs of public-private keys: 
+The timestamp service is equipped with two pairs of public-private keys:
 i) the (pubKc,privKc) pair which is used to establish a secure connection with the service; 
 ii) the (pubKts, privKts) pair which is used to digitally sign the timestamp.
 Users interact with the TSS through a secure channel that must be established before issuing operations.
