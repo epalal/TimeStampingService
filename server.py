@@ -1,6 +1,7 @@
 import socket
 from shared import unpack_message
 
+
 def main():
     """
     Main function to run the TimeStamping Server.
