@@ -1,5 +1,10 @@
 import socket
 import time
+import os
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes, serialization
 
 from shared import pack_message, MSG_TYPE_HANDSHAKE
 
@@ -7,16 +12,52 @@ def main():
     host = '127.0.0.1'
     port = 65432
 
+    with open("keys/pubKc.pem", "rb") as f:
+        pubKc = serialization.load_pem_public_key(
+            f.read())
+        
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((host, port))
         print(f"Connected to server at {host}:{port}")
+        client_nonce = os.urandom(32)
+        eph_priv_c = ec.generate_private_key(ec.SECP256R1())
+        client_eph_pub_bytes = eph_priv_c.public_key().public_bytes(
+            encoding=serialization.Encoding.X962,
+            format=serialization.PublicFormat.UncompressedPoint
+        )
 
-        while True:
-            message = "Hello, from Bob!"
-            packed_message = pack_message(MSG_TYPE_HANDSHAKE, message.encode())
-            s.sendall(packed_message)
-            print(f"Sent to server: {message}")
-            time.sleep(1)
+        payload_out = client_eph_pub_bytes + client_nonce
+        s.sendall(pack_message(MSG_TYPE_HANDSHAKE, payload_out))
+
+        msg_type, payload_in = unpack_message(s)
+        if msg_type != MSG_TYPE_HANDSHAKE:
+            print("[-] Errore: Messaggio inatteso dal server.")
+            return
+    
+        server_nonce = payload_in[:32]
+        server_eph_pub_bytes = payload_in[32:97]
+        signature = payload_in[97:]
+
+        transcript = client_eph_pub_bytes + client_nonce + server_nonce + server_eph_pub_bytes
+        
+        pubKc.verify(signature,transcript, ec.ECDSA(hashes.SHA256()))
+
+        server_eph_pub = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256R1(), 
+            server_eph_pub_bytes
+        )
+
+        shared_secret = eph_priv_c.exchange(ec.ECDH(), server_eph_pub)
+
+        hkdf = HKDF(
+            algorithm=hashes.SHA256(),
+            length=64,
+            salt=client_nonce + server_nonce,
+            info=b"TSS v1 session key"
+        )
+        session_key = hkdf.derive(shared_secret)
+
+        print("Handshake Completed. Perfect Forward Secrecy guaranteed.")
 
 if __name__ == '__main__':
     main()

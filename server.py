@@ -13,9 +13,9 @@ STATE_READY = 2
 
 def handshake_protocol(client_nonce: bytes, client_eph_pub_bytes: bytes, privKc: ec.EllipticCurvePrivateKey):
     server_nonce = os.urandom(32)
-    eph_priv = ec.generate_private_key(ec.SECP384R1())
+    eph_priv = ec.generate_private_key(ec.SECP256R1())
+       # !!! mismatch with the one used in line 68 ec.SECP256R1 MUST BE CORRECTED
     eph_pub = eph_priv.public_key()
-
     eph_pub_bytes = eph_pub.public_bytes(
         encoding=serialization.Encoding.X962,
         format=serialization.PublicFormat.UncompressedPoint
@@ -70,7 +70,7 @@ class ClientHandler(threading.Thread):
 
                     hkdf = HKDF(
                         algorithm=hashes.SHA256(),
-                        length=32,  # 32 byte = 256 bit per AES-256
+                        length=64,  # 64 byte = 512 bit per AES-256
                         salt=client_nonce + server_nonce,
                         info=b"TSS v1 session key"
                     )
@@ -95,8 +95,8 @@ def main():
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, port))
+        s.listen()
         while True:
-            s.listen()
             print(f"Server listening on {host}:{port}")
             conn, addr = s.accept()
             print(f"Connected by {addr}")
