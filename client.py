@@ -3,7 +3,7 @@ import os
 import struct
 import json
 from cryptography.exceptions import InvalidSignature
-from shared import SecureChannel, pack_message, unpack_message, MSG_TYPE_HANDSHAKE, MSG_TYPE_AUTH, MSG_TYPE_TIMESTAMP, \
+from shared import MSG_TYPE_AUTH_FAILED, MSG_TYPE_BALANCE, SecureChannel, pack_message, unpack_message, MSG_TYPE_HANDSHAKE, MSG_TYPE_AUTH, MSG_TYPE_TIMESTAMP, \
     MSG_TYPE_AUTH_SUCCESS
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -51,7 +51,6 @@ class TSSClient:
 
         payload_out = client_eph_pub_bytes + client_nonce
         self.sock.sendall(pack_message(MSG_TYPE_HANDSHAKE, payload_out))
-
         msg_type, payload_in = unpack_message(self.sock)
         if msg_type != MSG_TYPE_HANDSHAKE:
             print("Error: Unexpected message from server.")
@@ -74,7 +73,7 @@ class TSSClient:
         shared_secret = eph_priv_c.exchange(ec.ECDH(), server_eph_pub)
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
-            length=32,
+            length=32, #64???
             salt=client_nonce + server_nonce,
             info=b"TSS v1 session key"
         )
@@ -93,19 +92,25 @@ class TSSClient:
         if msg_type == MSG_TYPE_AUTH_SUCCESS:
             print("Succesful Login!")
             self.state = STATE_READY
+        elif msg_type == MSG_TYPE_AUTH_FAILED:
+            print("Login failed.")
         else:
-            print("Wrong Credentials.")
+            print("Error.")
 
     def _ready(self):
         print("\n--- MENU ---")
         print("1. Request Timestamp")
-        print("2. Logout")
-        scelta = input("Scelta: ")
+        print("2. Balance")
+        print("3. Logout")
+        choice = input("Scelta: ")
         
-        if scelta == "1":
+        if choice == "1":
             self._request_timestamp()
-        elif scelta == "2":
-            raise KeyboardInterrupt
+        elif choice == "2":
+            self._request_balance()
+        elif choice == "3":
+            print("Logging out...")
+            self.state = STATE_LOGIN
         else:
             print("Invalid choice. Please try again.")
 
@@ -120,12 +125,11 @@ class TSSClient:
             while chunk := f.read(8192):
                 digest.update(chunk)
             file_hash = digest.finalize()
-            print(f"Calculated Hash: {file_hash.hex()}")
+            print(f"Calculated Hash, to certify: {file_hash.hex()}")
 
         self.secure_channel.send_secure(MSG_TYPE_TIMESTAMP, file_hash)
-
         msg_type, response = self.secure_channel.recv_secure()
-        if response.startswith(b"OK"):
+        if msg_type == MSG_TYPE_TIMESTAMP:
             time_bytes = response[2:10]
             timestamp = struct.unpack(">Q", time_bytes)[0]
             signature = response[10:]
@@ -138,9 +142,16 @@ class TSSClient:
             output_path = filepath + ".tsr"
             with open(output_path, "w") as f:
                 json.dump(token_data, f, indent=4)
-            print(f"Timestamp saved in {output_path}")
+            print(f"Timestamp recieved and saved in {output_path}")
         else:
             print(f"Error from server: {response.decode()}")
+
+    def _request_balance(self):
+        self.secure_channel.send_secure(MSG_TYPE_BALANCE, b"")
+        msg_type, response = self.secure_channel.recv_secure()
+        if msg_type == MSG_TYPE_BALANCE and len(response) == 8:
+            nc, nr = struct.unpack('>II', response)
+            print(f"Timestamp consumed: {nc}, Timestamp available: {nr}")
 
 if __name__ == '__main__':
     client = TSSClient('127.0.0.1', 65432, "keys/pubKc.pem")
