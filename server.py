@@ -59,9 +59,9 @@ class ClientHandler(threading.Thread):
             while True:
                 if self.state == STATE_HANDSHAKE:
                     msg_type, payload = unpack_message(self.conn)
-                    if msg_type is None:
-                        print(f"[{self.addr}] Disconnected")
-                        break
+                if msg_type is None:
+                    print(f"[{self.addr}] Disconnected")
+                    break
                 if self.state == STATE_HANDSHAKE:
                     if msg_type != MSG_TYPE_HANDSHAKE:
                         print(f"[{self.addr}] Expected handshake message, got {msg_type}")
