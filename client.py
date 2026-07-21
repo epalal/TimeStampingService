@@ -1,3 +1,4 @@
+import datetime
 import socket
 import os
 import struct
@@ -136,13 +137,15 @@ class TSSClient:
         self.secure_channel.send_secure(MSG_TYPE_TIMESTAMP, file_hash)
         msg_type, response = self.secure_channel.recv_secure()
         if msg_type == MSG_TYPE_TIMESTAMP:
-            time_bytes = response[2:10]
+            time_bytes = response[:8]
             timestamp = struct.unpack(">Q", time_bytes)[0]
-            signature = response[10:]
+            signature = response[8:]
+            date_time = datetime.datetime.fromtimestamp(timestamp)
 
             token_data = {
                     "hash": file_hash.hex(),
                     "time": timestamp,
+                    "date": date_time.strftime("%Y-%m-%d %H:%M:%S"),
                     "signature": signature.hex()
                 }
             output_path = filepath + ".tsr"

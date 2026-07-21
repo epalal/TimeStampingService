@@ -87,9 +87,12 @@ def find_user(username, password):
                         ''', (
         username,
     ))
-    passwd_hash, salt = cur.fetchone()
+    row = cur.fetchone()
     conn.commit()
     conn.close()
+    if row is None:
+        return False
+    passwd_hash, salt = row
     if passwd_hash is not None and salt is not None:
         return verify_hash(passwd_hash, salt, password)
     else:
@@ -116,9 +119,9 @@ def use_token(username: str) -> bool:
 
     cur.execute('''
                 UPDATE users
-                SET tokens_available = tokens_available - 1
-                WHERE username = ?
-                  AND tokens_available > 0
+                SET tokens_available = tokens_available - 1,
+                tokens_consumed = tokens_consumed + 1
+                WHERE username = ? AND tokens_available > 0
                 ''', (username,))
 
     success = cur.rowcount == 1

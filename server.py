@@ -97,14 +97,17 @@ class ClientHandler(threading.Thread):
                         if msg_type is None:
                             print(f"[{self.addr}] Disconnected or timeout")
                             break
-                        username, password = payload.split(b'\x00', 1)
-                        username = username.decode('utf-8')
-                        password = password.decode('utf-8')
+                        if msg_type != MSG_TYPE_AUTH:
+                            self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Invalid message format")
+                            continue
 
-                        if msg_type == MSG_TYPE_AUTH and username is not None:
-                            print(f"[{self.addr}] State login: Username received. Ask for password")
-                        else:
-                            self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Bad format")
+                        try:
+                            username_bytes, password_bytes = payload.split(b'\x00', 1)
+                            username = username_bytes.decode('utf-8')
+                            password = password_bytes.decode('utf-8')
+                        except ValueError:
+                            self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Malformed payload")
+                            continue
                         if find_user(username, password):
                             print(f"[{self.addr}] User {username} logged")
                             self.username = username
