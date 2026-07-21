@@ -8,8 +8,7 @@ from shared import MSG_TYPE_AUTH_FAILED, MSG_TYPE_BALANCE, SecureChannel, pack_m
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
-import tkinter as tk
-from tkinter import filedialog
+
 
 STATE_HANDSHAKE = 0
 STATE_LOGIN = 1
