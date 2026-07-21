@@ -15,12 +15,10 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 
 def pack_message(msg_type, payload):
-    """Packs a message with a header."""
     return struct.pack(HEADER_FORMAT, msg_type, len(payload)) + payload
 
 
 def recv_exact(conn, n):
-    """Legge esattamente n byte dalla socket."""
     data = bytearray()
     while len(data) < n:
         packet = conn.recv(n - len(data))
@@ -31,7 +29,6 @@ def recv_exact(conn, n):
 
 
 def unpack_message(conn):
-    """Unpacks a message from a socket."""
     header = recv_exact(conn, HEADER_SIZE)
     if not header:
         return None, None
@@ -93,7 +90,7 @@ class SecureChannel:
         try:
             cleartext_msg = self.aesgcm.decrypt(expected_iv, encrypted_record, expected_aad)
         except Exception as e:
-            print(f"[-] SecureChannel: Errore di decifratura/autenticazione: {e}")
+            print(f"[-] SecureChannel: Error decrypting message: {e}")
             return None, None
 
         self.recv_seq += 1
