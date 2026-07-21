@@ -3,7 +3,8 @@ import os
 import struct
 import json
 from cryptography.exceptions import InvalidSignature
-from shared import SecureChannel, pack_message, unpack_message, MSG_TYPE_HANDSHAKE, MSG_TYPE_AUTH, MSG_TYPE_TIMESTAMP
+from shared import SecureChannel, pack_message, unpack_message, MSG_TYPE_HANDSHAKE, MSG_TYPE_AUTH, MSG_TYPE_TIMESTAMP, \
+    MSG_TYPE_AUTH_SUCCESS
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
@@ -78,7 +79,7 @@ class TSSClient:
             info=b"TSS v1 session key"
         )
         session_key = hkdf.derive(shared_secret)
-        
+        self.session_key = session_key
         self.secure_channel = SecureChannel(self.sock, self.session_key, SecureChannel.ROLE_CLIENT)
         print("Handshake completed. Perfect Forward Secrecy guaranteed.")
         self.state = STATE_LOGIN
@@ -89,7 +90,7 @@ class TSSClient:
         payload = f"{username}\x00{password}".encode('utf-8')
         self.secure_channel.send_secure(MSG_TYPE_AUTH, payload)
         msg_type, response = self.secure_channel.recv_secure()
-        if response == b"OK":
+        if msg_type == MSG_TYPE_AUTH_SUCCESS:
             print("Succesful Login!")
             self.state = STATE_READY
         else:

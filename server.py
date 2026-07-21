@@ -4,7 +4,8 @@ import struct
 import time
 from mimetypes import init
 
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_TIMESTAMP_ERROR
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_TIMESTAMP_ERROR, \
+    MSG_TYPE_AUTH_SUCCESS
 from shared import MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED,MSG_TYPE_BALANCE, MSG_TYPE_TIMESTAMP
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -96,14 +97,16 @@ class ClientHandler(threading.Thread):
                     print(f"[{self.addr}] State login: ask for username")
                     is_credential_wrong = True
                     while is_credential_wrong:
-                        msg_type, username = self.secure_channel.recv_secure()
+                        msg_type, payload = self.secure_channel.recv_secure()
+                        if msg_type is None:
+                            print(f"[{self.addr}] Disconnected or timeout")
+                            break
+                        username, password = payload.split(b'\x00', 1)
+                        username = username.decode('utf-8')
+                        password = password.decode('utf-8')
+
                         if msg_type == MSG_TYPE_AUTH and username is not None:
                             print(f"[{self.addr}] State login: Username received. Ask for password")
-                        else:
-                            self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Bad format")
-                        msa_type, password = self.secure_channel.recv_secure()
-                        if msg_type == MSG_TYPE_AUTH and password is not None:
-                            print(f"[{self.addr}] State login: Password received")
                         else:
                             self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Bad format")
                         if find_user(username, password):
@@ -111,6 +114,7 @@ class ClientHandler(threading.Thread):
                             self.username = username
                             is_credential_wrong = False
                             self.state = STATE_READY
+                            self.secure_channel.send_secure(MSG_TYPE_AUTH_SUCCESS, b"Authentication successful.")
                         else:
                             print(f"[{self.addr}] Wrong credentials")
                             self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Wrong credentials. Try again.")
