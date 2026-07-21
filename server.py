@@ -1,6 +1,7 @@
 import os
 import socket
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED, \
+    MSG_TYPE_INFO, MSG_TYPE_ERROR
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
@@ -11,6 +12,7 @@ import threading
 STATE_HANDSHAKE = 0
 STATE_LOGIN = 1
 STATE_READY = 2
+
 
 def handshake_protocol(client_nonce: bytes, client_eph_pub_bytes: bytes, privKc: ec.EllipticCurvePrivateKey):
     server_nonce = os.urandom(32)
@@ -44,6 +46,7 @@ class ClientHandler(threading.Thread):
         self.privKc = privKc
         self.state = STATE_HANDSHAKE
         self.session_key = None
+        self.conn.settimeout(60.0)
 
     def run(self):
         with self.conn:
@@ -74,7 +77,7 @@ class ClientHandler(threading.Thread):
 
                     hkdf = HKDF(
                         algorithm=hashes.SHA256(),
-                        length=32,  # 64 byte = 512 bit per AES-256
+                        length=32,
                         salt=client_nonce + server_nonce,
                         info=b"TSS v1 session key"
                     )
@@ -87,13 +90,10 @@ class ClientHandler(threading.Thread):
 
                 elif self.state == STATE_LOGIN:
                     print(f"[{self.addr}] State login: ask for username")
-                    self.secure_channel.send_secure(MSG_TYPE_AUTH, b"Welcome to TSS!\nInsert your login info:\n")
                     is_credential_wrong = True
                     while is_credential_wrong:
-                        self.secure_channel.send_secure(MSG_TYPE_AUTH, b"Username:")
                         username = self.secure_channel.recv_secure()
                         print(f"[{self.addr}] State login: Username received. Ask for password")
-                        self.secure_channel.send_secure(MSG_TYPE_AUTH, b"Password:")
                         password = self.secure_channel.recv_secure()
                         if find_user(username, password):
                             print(f"[{self.addr}] User {username} logged")
@@ -106,8 +106,9 @@ class ClientHandler(threading.Thread):
                             is_credential_wrong = True
 
                 elif self.state == STATE_READY:
-                    pass
-
+                    while True:
+                        self.secure_channel.send_secure(MSG_TYPE_INFO,f"Welcome {self.username}!\n Digit:\n 1 - Balance\n 2 - Timestamp")
+                        msg = self.secure_channel.recv_secure()
 
 def main():
     host = '127.0.0.1'
