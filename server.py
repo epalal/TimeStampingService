@@ -1,6 +1,6 @@
 import os
 import socket
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_AUTH
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
@@ -46,7 +46,8 @@ class ClientHandler(threading.Thread):
     def run(self):
         with self.conn:
             while True:
-                msg_type, payload = unpack_message(self.conn)
+                if self.state == STATE_HANDSHAKE:
+                    msg_type, payload = unpack_message(self.conn)
                 if msg_type is None:
                     print(f"[{self.addr}] Disconnected")
                     break
@@ -80,7 +81,11 @@ class ClientHandler(threading.Thread):
                     self.secure_channel = SecureChannel(self.conn, self.session_key, SecureChannel.ROLE_SERVER)
                     self.state = STATE_LOGIN
                     print(f"[{self.addr}] Handshake completed")
+                    msg = self.secure_channel.recv_secure()
+
                 elif self.state == STATE_LOGIN:
+                    self.secure_channel.send_secure(MSG_TYPE_AUTH,b"Welcome to TSS!\nInsert your login info\nUsername:")
+                    username = self.secure_channel.recv_secure()
                     msg = self.secure_channel.recv_secure()
                     print(msg)
                 elif self.state == STATE_READY:

@@ -4,7 +4,7 @@ import os
 
 from cryptography.exceptions import InvalidSignature
 
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_AUTH
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
@@ -70,7 +70,8 @@ def main():
         print("Test: Invio un ping cifrato al server...")
 
         # Usiamo un MSG_TYPE fittizio (es. 99) per testare l'invio cifrato
-        secure_channel.send_secure(99, b"Ping dal tunnel AES-GCM!")
+        secure_channel.send_secure(MSG_TYPE_AUTH, b"Ping dal tunnel AES-GCM!")
+
 
 if __name__ == '__main__':
     main()
