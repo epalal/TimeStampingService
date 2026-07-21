@@ -14,10 +14,11 @@ def create_db():
                     username VARCHAR (50) NOT NULL UNIQUE,
                     salt VARCHAR (32) NOT NULL,
                     passwd_hash VARCHAR (64) NOT NULL,
-                    tokens_available INTEGER DEFAULT 10)
+                    tokens_available INTEGER DEFAULT 10,
+                    tokens_consumed INTEGER DEFAULT 0)
                 ''')
-    create_user("alice", "Al1ce4Ever!")
-    create_user("bob", "Bob1sTh3Best!", tokens=1)
+    create_user("alice", "123")
+    create_user("bob", "123", tokens=1, token_consumed = 9)
     conn.commit()
     conn.close()
 
@@ -53,7 +54,7 @@ def verify_hash(passwd_hash: str, salt: str, password: str) -> bool:
         return False
 
 
-def create_user(username: str, passwd: str, tokens: int = 10):
+def create_user(username: str, passwd: str, tokens: int = 10, token_consumed: int = 0):
     conn = sqlite3.connect('users.db')
     cur = conn.cursor()
 
@@ -61,13 +62,14 @@ def create_user(username: str, passwd: str, tokens: int = 10):
 
     try:
         cur.execute('''
-                    INSERT INTO users (username, salt, passwd_hash, tokens_available)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO users (username, salt, passwd_hash, tokens_available, tokens_consumed)
+                    VALUES (?, ?, ?, ?, ?)
                     ''', (
                         username,
                         hashed_passwd["salt"],
                         hashed_passwd["pwd_hash"],
-                        tokens
+                        tokens,
+                        token_consumed
                     ))
         conn.commit()
         print(f"Utente '{username}' creato con successo.")
@@ -98,14 +100,14 @@ def ask_balance(username):
     conn = sqlite3.connect('users.db')
     cur = conn.cursor()
     cur.execute('''
-                            SELECT tokens_available FROM users WHERE username = ?
+                            SELECT tokens_available, tokens_consumed FROM users WHERE username = ?
                             ''', (
         username,
     ))
     tokens = cur.fetchone()
     conn.commit()
     conn.close()
-    return tokens
+    return tokens[0], tokens[1]
 
 
 def use_token(username: str) -> bool:

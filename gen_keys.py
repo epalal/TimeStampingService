@@ -23,17 +23,16 @@ def gen_keys(private_key_filename, public_key_filename):
 
     with open(private_key_filename, 'wb') as f:
         f.write(pem_private)
-
     with open(public_key_filename, 'wb') as f:
         f.write(pem_public)
 
 if __name__== "__main__":
+
     keys_dir = "keys"
     gen_keys(
         os.path.join(keys_dir, "privKc.pem"),
         os.path.join(keys_dir, "pubKc.pem"),
     )
-
     gen_keys(
         os.path.join(keys_dir, "privKts.pem"),
         os.path.join(keys_dir, "pubKts.pem"),

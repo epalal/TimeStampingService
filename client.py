@@ -8,10 +8,13 @@ from shared import MSG_TYPE_AUTH_FAILED, MSG_TYPE_BALANCE, SecureChannel, pack_m
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
+import tkinter as tk
+from tkinter import filedialog
 
 STATE_HANDSHAKE = 0
 STATE_LOGIN = 1
 STATE_READY = 2
+STATE_LOGOUT = 3
 
 class TSSClient:
     def __init__(self, host: str, port: int, pubKc_path: str):
@@ -34,6 +37,9 @@ class TSSClient:
                     self._login()
                 elif self.state == STATE_READY:
                     self._ready()
+                elif self.state == STATE_LOGOUT:
+                    self.sock.close()
+                    break
         except KeyboardInterrupt:
             print("Exiting...")
         except Exception as e:
@@ -110,12 +116,13 @@ class TSSClient:
             self._request_balance()
         elif choice == "3":
             print("Logging out...")
-            self.state = STATE_LOGIN
+            self.state = STATE_LOGOUT
         else:
             print("Invalid choice. Please try again.")
 
     def _request_timestamp(self):
         filepath = input("Insert the path of the file to timestamp: ")
+
         if not os.path.exists(filepath):
             print("File not found.")
             return

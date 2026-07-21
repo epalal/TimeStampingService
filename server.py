@@ -2,8 +2,6 @@ import os
 import socket
 import struct
 import time
-from mimetypes import init
-
 from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_TIMESTAMP_ERROR, \
     MSG_TYPE_AUTH_SUCCESS
 from shared import MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED,MSG_TYPE_BALANCE, MSG_TYPE_TIMESTAMP
@@ -30,12 +28,10 @@ def handshake_protocol(client_nonce: bytes, client_eph_pub_bytes: bytes, privKc:
     )
 
     msg = client_eph_pub_bytes + client_nonce + server_nonce + eph_pub_bytes
-
     sign = privKc.sign(
         msg,
         ec.ECDSA(hashes.SHA256())
     )
-
     payload = server_nonce + eph_pub_bytes + sign
 
     return payload, eph_priv, server_nonce
@@ -127,8 +123,8 @@ class ClientHandler(threading.Thread):
                             print(f"[{self.addr}] Disconnected or timeout")
                             break
                         if msg_type == MSG_TYPE_BALANCE:
-                            tokens = ask_balance(self.username)
-                            payload_out = struct.pack('!I', tokens)
+                            tokens, token_consumed = ask_balance(self.username)
+                            payload_out = struct.pack('>II', token_consumed, tokens)
                             self.secure_channel.send_secure(MSG_TYPE_BALANCE, payload_out)
 
                         elif msg_type == MSG_TYPE_TIMESTAMP:
