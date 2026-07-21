@@ -92,3 +92,17 @@ def find_user(username, password):
         return verify_hash(passwd_hash, salt, password)
     else:
         return False
+
+
+def ask_balance(username):
+    conn = sqlite3.connect('users.db')
+    cur = conn.cursor()
+    cur.execute('''
+                            SELECT tokens_available FROM users WHERE username = ?
+                            ''', (
+        username,
+    ))
+    tokens = cur.fetchone()
+    conn.commit()
+    conn.close()
+    return tokens

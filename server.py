@@ -1,11 +1,11 @@
 import os
 import socket
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED, \
-    MSG_TYPE_INFO, MSG_TYPE_ERROR
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel
+from shared import MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED,MSG_TYPE_BALANCE, MSG_TYPE_TIMESTAMP
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
-from db import create_db, find_user
+from db import create_db, find_user, ask_balance
 import threading
 
 
@@ -86,15 +86,21 @@ class ClientHandler(threading.Thread):
                     self.secure_channel = SecureChannel(self.conn, self.session_key, SecureChannel.ROLE_SERVER)
                     self.state = STATE_LOGIN
                     print(f"[{self.addr}] Handshake completed")
-                    msg = self.secure_channel.recv_secure()
 
                 elif self.state == STATE_LOGIN:
                     print(f"[{self.addr}] State login: ask for username")
                     is_credential_wrong = True
                     while is_credential_wrong:
-                        username = self.secure_channel.recv_secure()
-                        print(f"[{self.addr}] State login: Username received. Ask for password")
-                        password = self.secure_channel.recv_secure()
+                        msg_type, username = self.secure_channel.recv_secure()
+                        if msg_type == MSG_TYPE_AUTH and username is not None:
+                            print(f"[{self.addr}] State login: Username received. Ask for password")
+                        else:
+                            self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Bad format")
+                        msa_type, password = self.secure_channel.recv_secure()
+                        if msg_type == MSG_TYPE_AUTH and password is not None:
+                            print(f"[{self.addr}] State login: Password received")
+                        else:
+                            self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Bad format")
                         if find_user(username, password):
                             print(f"[{self.addr}] User {username} logged")
                             self.username = username
@@ -107,8 +113,14 @@ class ClientHandler(threading.Thread):
 
                 elif self.state == STATE_READY:
                     while True:
-                        self.secure_channel.send_secure(MSG_TYPE_INFO,f"Welcome {self.username}!\n Digit:\n 1 - Balance\n 2 - Timestamp")
-                        msg = self.secure_channel.recv_secure()
+                        msg_type, payload = self.secure_channel.recv_secure()
+                        if msg_type == MSG_TYPE_BALANCE:
+                            balance = ask_balance(self.username)
+                            self.secure_channel.send_secure(MSG_TYPE_BALANCE, balance)
+                        elif msg_type == MSG_TYPE_TIMESTAMP:
+                            pass
+
+
 
 def main():
     host = '127.0.0.1'
