@@ -1,11 +1,15 @@
 import os
 import socket
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel
+import struct
+import time
+from mimetypes import init
+
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_TIMESTAMP_ERROR
 from shared import MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED,MSG_TYPE_BALANCE, MSG_TYPE_TIMESTAMP
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
-from db import create_db, find_user, ask_balance
+from db import create_db, find_user, ask_balance, use_token
 import threading
 
 
@@ -37,13 +41,14 @@ def handshake_protocol(client_nonce: bytes, client_eph_pub_bytes: bytes, privKc:
 
 
 class ClientHandler(threading.Thread):
-    def __init__(self, conn, addr, privKc: ec.EllipticCurvePrivateKey):
+    def __init__(self, conn, addr, privKc: ec.EllipticCurvePrivateKey, privKts: ec.EllipticCurvePrivateKey):
         super().__init__()
         self.username = None
         self.secure_channel = None
         self.conn = conn
         self.addr = addr
         self.privKc = privKc
+        self.privKts = privKts
         self.state = STATE_HANDSHAKE
         self.session_key = None
         self.conn.settimeout(60.0)
@@ -53,9 +58,9 @@ class ClientHandler(threading.Thread):
             while True:
                 if self.state == STATE_HANDSHAKE:
                     msg_type, payload = unpack_message(self.conn)
-                if msg_type is None:
-                    print(f"[{self.addr}] Disconnected")
-                    break
+                    if msg_type is None:
+                        print(f"[{self.addr}] Disconnected")
+                        break
                 if self.state == STATE_HANDSHAKE:
                     if msg_type != MSG_TYPE_HANDSHAKE:
                         print(f"[{self.addr}] Expected handshake message, got {msg_type}")
@@ -114,12 +119,27 @@ class ClientHandler(threading.Thread):
                 elif self.state == STATE_READY:
                     while True:
                         msg_type, payload = self.secure_channel.recv_secure()
+                        if msg_type is None:
+                            print(f"[{self.addr}] Disconnected or timeout")
+                            break
                         if msg_type == MSG_TYPE_BALANCE:
-                            balance = ask_balance(self.username)
-                            self.secure_channel.send_secure(MSG_TYPE_BALANCE, balance)
-                        elif msg_type == MSG_TYPE_TIMESTAMP:
-                            pass
+                            tokens = ask_balance(self.username)
+                            payload_out = struct.pack('!I', tokens)
+                            self.secure_channel.send_secure(MSG_TYPE_BALANCE, payload_out)
 
+                        elif msg_type == MSG_TYPE_TIMESTAMP:
+                            if not use_token(self.username):
+                                self.secure_channel.send_secure(MSG_TYPE_TIMESTAMP_ERROR, b"No tokens available")
+                                continue
+                            current_time = int(time.time())
+                            time_bytes = struct.pack('!Q', current_time)
+                            msg_to_sign = payload + time_bytes
+                            signature = self.privKts.sign(
+                                msg_to_sign,
+                                ec.ECDSA(hashes.SHA256())
+                            )
+                            response_payload = time_bytes + signature
+                            self.secure_channel.send_secure(MSG_TYPE_TIMESTAMP, response_payload)
 
 
 def main():
@@ -130,6 +150,8 @@ def main():
 
     with open("keys/privKc.pem", "rb") as f:
         privKc = serialization.load_pem_private_key(f.read(), password=None)
+    with open("keys/privKts.pem", "rb") as f:
+        privKts = serialization.load_pem_private_key(f.read(), password=None)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, port))
@@ -138,7 +160,7 @@ def main():
             print(f"Server listening on {host}:{port}")
             conn, addr = s.accept()
             print(f"Connected by {addr}")
-            client_handler = ClientHandler(conn, addr, privKc)
+            client_handler = ClientHandler(conn, addr, privKc, privKts)
             client_handler.start()
 
 

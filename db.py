@@ -106,3 +106,22 @@ def ask_balance(username):
     conn.commit()
     conn.close()
     return tokens
+
+
+def use_token(username: str) -> bool:
+    conn = sqlite3.connect('users.db')
+    cur = conn.cursor()
+
+    cur.execute('''
+                UPDATE users
+                SET tokens_available = tokens_available - 1
+                WHERE username = ?
+                  AND tokens_available > 0
+                ''', (username,))
+
+    success = cur.rowcount == 1
+
+    conn.commit()
+    conn.close()
+
+    return success
