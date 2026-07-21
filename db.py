@@ -16,6 +16,8 @@ def create_db():
                     passwd_hash VARCHAR (64) NOT NULL,
                     tokens_available INTEGER DEFAULT 10)
                 ''')
+    create_user("alice", "Al1ce4Ever!")
+    create_user("bob", "Bob1sTh3Best!", tokens=1)
     conn.commit()
     conn.close()
 
@@ -51,7 +53,6 @@ def verify_hash(passwd_hash: str, salt: str, password: str) -> bool:
         return False
 
 
-
 def create_user(username: str, passwd: str, tokens: int = 10):
     conn = sqlite3.connect('users.db')
     cur = conn.cursor()
@@ -76,16 +77,18 @@ def create_user(username: str, passwd: str, tokens: int = 10):
         conn.close()
 
 
-if __name__ == "__main__":
-    create_db()
-    # Proviamo a creare Alice e Bob
-    create_user("alice", "SuperSegreta123", 5)
-    create_user("bob", "PasswordBob456", 10)
-    hash1= hash_new_password("SuperSegreta123")
-    hash2= hash_new_password("PasswordBob456")
-    print(hash1)
-    print(hash2)
-
-    print(verify_hash(hash1["pwd_hash"], hash1["salt"], "SuperSegreta123"))
-    print(verify_hash(hash2["pwd_hash"], hash2["salt"], "PasswordBob456"))
-
+def find_user(username, password):
+    conn = sqlite3.connect('users.db')
+    cur = conn.cursor()
+    cur.execute('''
+                        SELECT passwd_hash, salt FROM users WHERE username = ?
+                        ''', (
+        username,
+    ))
+    passwd_hash, salt = cur.fetchone()
+    conn.commit()
+    conn.close()
+    if passwd_hash is not None and salt is not None:
+        return verify_hash(passwd_hash, salt, password)
+    else:
+        return False

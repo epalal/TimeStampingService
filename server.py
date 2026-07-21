@@ -1,9 +1,10 @@
 import os
 import socket
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_AUTH
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
+from db import create_db, find_user
 import threading
 
 
@@ -36,6 +37,7 @@ def handshake_protocol(client_nonce: bytes, client_eph_pub_bytes: bytes, privKc:
 class ClientHandler(threading.Thread):
     def __init__(self, conn, addr, privKc: ec.EllipticCurvePrivateKey):
         super().__init__()
+        self.username = None
         self.secure_channel = None
         self.conn = conn
         self.addr = addr
@@ -84,10 +86,25 @@ class ClientHandler(threading.Thread):
                     msg = self.secure_channel.recv_secure()
 
                 elif self.state == STATE_LOGIN:
-                    self.secure_channel.send_secure(MSG_TYPE_AUTH,b"Welcome to TSS!\nInsert your login info\nUsername:")
-                    username = self.secure_channel.recv_secure()
-                    msg = self.secure_channel.recv_secure()
-                    print(msg)
+                    print(f"[{self.addr}] State login: ask for username")
+                    self.secure_channel.send_secure(MSG_TYPE_AUTH, b"Welcome to TSS!\nInsert your login info:\n")
+                    is_credential_wrong = True
+                    while is_credential_wrong:
+                        self.secure_channel.send_secure(MSG_TYPE_AUTH, b"Username:")
+                        username = self.secure_channel.recv_secure()
+                        print(f"[{self.addr}] State login: Username received. Ask for password")
+                        self.secure_channel.send_secure(MSG_TYPE_AUTH, b"Password:")
+                        password = self.secure_channel.recv_secure()
+                        if find_user(username, password):
+                            print(f"[{self.addr}] User {username} logged")
+                            self.username = username
+                            is_credential_wrong = False
+                            self.state = STATE_READY
+                        else:
+                            print(f"[{self.addr}] Wrong credentials")
+                            self.secure_channel.send_secure(MSG_TYPE_AUTH_FAILED, b"Wrong credentials. Try again.")
+                            is_credential_wrong = True
+
                 elif self.state == STATE_READY:
                     pass
 
@@ -95,6 +112,9 @@ class ClientHandler(threading.Thread):
 def main():
     host = '127.0.0.1'
     port = 65432
+
+    create_db()
+
     with open("keys/privKc.pem", "rb") as f:
         privKc = serialization.load_pem_private_key(f.read(), password=None)
 
