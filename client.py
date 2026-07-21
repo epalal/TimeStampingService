@@ -1,27 +1,46 @@
 import socket
-import time
 import os
-
+import struct
+import json
 from cryptography.exceptions import InvalidSignature
-
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel, MSG_TYPE_AUTH
+from shared import SecureChannel, pack_message, unpack_message, MSG_TYPE_HANDSHAKE, MSG_TYPE_AUTH, MSG_TYPE_TIMESTAMP
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
 
-from shared import pack_message, MSG_TYPE_HANDSHAKE
+STATE_HANDSHAKE = 0
+STATE_LOGIN = 1
+STATE_READY = 2
 
-def main():
-    host = '127.0.0.1'
-    port = 65432
-
-    with open("keys/pubKc.pem", "rb") as f:
-        pubKc = serialization.load_pem_public_key(
-            f.read())
+class TSSClient:
+    def __init__(self, host: str, port: int, pubKc_path: str):
+        self.host = host
+        self.port = port
+        self.state = STATE_HANDSHAKE
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.secure_channel = None
         
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((host, port))
-        print(f"Connected to server at {host}:{port}")
+        with open(pubKc_path, "rb") as f:
+            self.pubKc = serialization.load_pem_public_key(f.read())
+
+    def run(self):
+        self.sock.connect((self.host, self.port))
+        try:
+            while True:
+                if self.state == STATE_HANDSHAKE:
+                    self._handshake()
+                elif self.state == STATE_LOGIN:
+                    self._login()
+                elif self.state == STATE_READY:
+                    self._ready()
+        except KeyboardInterrupt:
+            print("Exiting...")
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            self.sock.close()
+
+    def _handshake(self):
         client_nonce = os.urandom(32)
         eph_priv_c = ec.generate_private_key(ec.SECP256R1())
         client_eph_pub_bytes = eph_priv_c.public_key().public_bytes(
@@ -30,32 +49,28 @@ def main():
         )
 
         payload_out = client_eph_pub_bytes + client_nonce
-        s.sendall(pack_message(MSG_TYPE_HANDSHAKE, payload_out))
+        self.sock.sendall(pack_message(MSG_TYPE_HANDSHAKE, payload_out))
 
-        msg_type, payload_in = unpack_message(s)
+        msg_type, payload_in = unpack_message(self.sock)
         if msg_type != MSG_TYPE_HANDSHAKE:
-            print("[-] Errore: Messaggio inatteso dal server.")
+            print("Error: Unexpected message from server.")
             return
-    
         server_nonce = payload_in[:32]
         server_eph_pub_bytes = payload_in[32:97]
         signature = payload_in[97:]
 
         transcript = client_eph_pub_bytes + client_nonce + server_nonce + server_eph_pub_bytes
         try:
-            pubKc.verify(signature, transcript, ec.ECDSA(hashes.SHA256()))
+            self.pubKc.verify(signature, transcript, ec.ECDSA(hashes.SHA256()))
         except InvalidSignature:
-            print("[-] Errore CRITICO: Firma del server non valida. Possibile attacco MITM.")
+            print("Invalid signature.")
             return
-        pubKc.verify(signature,transcript, ec.ECDSA(hashes.SHA256()))
 
         server_eph_pub = ec.EllipticCurvePublicKey.from_encoded_point(
             ec.SECP256R1(), 
             server_eph_pub_bytes
         )
-
         shared_secret = eph_priv_c.exchange(ec.ECDH(), server_eph_pub)
-
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
@@ -63,15 +78,69 @@ def main():
             info=b"TSS v1 session key"
         )
         session_key = hkdf.derive(shared_secret)
-        secure_channel = SecureChannel(s, session_key, SecureChannel.ROLE_CLIENT)
+        
+        self.secure_channel = SecureChannel(self.sock, self.session_key, SecureChannel.ROLE_CLIENT)
+        print("Handshake completed. Perfect Forward Secrecy guaranteed.")
+        self.state = STATE_LOGIN
 
-        print("Handshake Completed. Perfect Forward Secrecy guaranteed.")
+    def _login(self):
+        username = input("Username: ")
+        password = input("Password: ")
+        payload = f"{username}\x00{password}".encode('utf-8')
+        self.secure_channel.send_secure(MSG_TYPE_AUTH, payload)
+        msg_type, response = self.secure_channel.recv_secure()
+        if response == b"OK":
+            print("Succesful Login!")
+            self.state = STATE_READY
+        else:
+            print("Wrong Credentials.")
 
-        print("Test: Invio un ping cifrato al server...")
+    def _ready(self):
+        print("\n--- MENU ---")
+        print("1. Request Timestamp")
+        print("2. Logout")
+        scelta = input("Scelta: ")
+        
+        if scelta == "1":
+            self._request_timestamp()
+        elif scelta == "2":
+            raise KeyboardInterrupt
+        else:
+            print("Invalid choice. Please try again.")
 
-        # Usiamo un MSG_TYPE fittizio (es. 99) per testare l'invio cifrato
-        secure_channel.send_secure(MSG_TYPE_AUTH, b"Ping dal tunnel AES-GCM!")
+    def _request_timestamp(self):
+        filepath = input("Insert the path of the file to timestamp: ")
+        if not os.path.exists(filepath):
+            print("File not found.")
+            return
 
+        digest = hashes.Hash(hashes.SHA256())
+        with open(filepath, "rb") as f:
+            while chunk := f.read(8192):
+                digest.update(chunk)
+            file_hash = digest.finalize()
+            print(f"Calculated Hash: {file_hash.hex()}")
+
+        self.secure_channel.send_secure(MSG_TYPE_TIMESTAMP, file_hash)
+
+        msg_type, response = self.secure_channel.recv_secure()
+        if response.startswith(b"OK"):
+            time_bytes = response[2:10]
+            timestamp = struct.unpack(">Q", time_bytes)[0]
+            signature = response[10:]
+
+            token_data = {
+                    "hash": file_hash.hex(),
+                    "time": timestamp,
+                    "signature": signature.hex()
+                }
+            output_path = filepath + ".tsr"
+            with open(output_path, "w") as f:
+                json.dump(token_data, f, indent=4)
+            print(f"Timestamp saved in {output_path}")
+        else:
+            print(f"Error from server: {response.decode()}")
 
 if __name__ == '__main__':
-    main()
+    client = TSSClient('127.0.0.1', 65432, "keys/pubKc.pem")
+    client.run()
