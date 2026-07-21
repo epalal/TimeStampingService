@@ -1,6 +1,6 @@
 import os
 import socket
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
@@ -36,6 +36,7 @@ def handshake_protocol(client_nonce: bytes, client_eph_pub_bytes: bytes, privKc:
 class ClientHandler(threading.Thread):
     def __init__(self, conn, addr, privKc: ec.EllipticCurvePrivateKey):
         super().__init__()
+        self.secure_channel = None
         self.conn = conn
         self.addr = addr
         self.privKc = privKc
@@ -70,20 +71,20 @@ class ClientHandler(threading.Thread):
 
                     hkdf = HKDF(
                         algorithm=hashes.SHA256(),
-                        length=64,  # 64 byte = 512 bit per AES-256
+                        length=32,  # 64 byte = 512 bit per AES-256
                         salt=client_nonce + server_nonce,
                         info=b"TSS v1 session key"
                     )
 
                     self.session_key = hkdf.derive(shared_secret)
-
+                    self.secure_channel = SecureChannel(self.conn, self.session_key, SecureChannel.ROLE_SERVER)
                     self.state = STATE_LOGIN
                     print(f"[{self.addr}] Handshake completed")
                 elif self.state == STATE_LOGIN:
-                    pass
+                    msg = self.secure_channel.recv_secure()
+                    print(msg)
                 elif self.state == STATE_READY:
                     pass
-
 
 
 def main():
@@ -91,7 +92,6 @@ def main():
     port = 65432
     with open("keys/privKc.pem", "rb") as f:
         privKc = serialization.load_pem_private_key(f.read(), password=None)
-
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, port))
@@ -102,6 +102,7 @@ def main():
             print(f"Connected by {addr}")
             client_handler = ClientHandler(conn, addr, privKc)
             client_handler.start()
+
 
 if __name__ == '__main__':
     main()

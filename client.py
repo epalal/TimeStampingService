@@ -1,7 +1,10 @@
 import socket
 import time
 import os
-from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message
+
+from cryptography.exceptions import InvalidSignature
+
+from shared import unpack_message, MSG_TYPE_HANDSHAKE, pack_message, SecureChannel
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
@@ -39,7 +42,11 @@ def main():
         signature = payload_in[97:]
 
         transcript = client_eph_pub_bytes + client_nonce + server_nonce + server_eph_pub_bytes
-        
+        try:
+            pubKc.verify(signature, transcript, ec.ECDSA(hashes.SHA256()))
+        except InvalidSignature:
+            print("[-] Errore CRITICO: Firma del server non valida. Possibile attacco MITM.")
+            return
         pubKc.verify(signature,transcript, ec.ECDSA(hashes.SHA256()))
 
         server_eph_pub = ec.EllipticCurvePublicKey.from_encoded_point(
@@ -51,13 +58,19 @@ def main():
 
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
-            length=64,
+            length=32,
             salt=client_nonce + server_nonce,
             info=b"TSS v1 session key"
         )
         session_key = hkdf.derive(shared_secret)
+        secure_channel = SecureChannel(s, session_key, SecureChannel.ROLE_CLIENT)
 
         print("Handshake Completed. Perfect Forward Secrecy guaranteed.")
+
+        print("Test: Invio un ping cifrato al server...")
+
+        # Usiamo un MSG_TYPE fittizio (es. 99) per testare l'invio cifrato
+        secure_channel.send_secure(99, b"Ping dal tunnel AES-GCM!")
 
 if __name__ == '__main__':
     main()
