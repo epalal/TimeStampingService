@@ -17,7 +17,7 @@ STATE_READY = 2
 STATE_LOGOUT = 3
 
 class TSSClient:
-    def __init__(self, host: str, port: int, pubKc_path: str):
+    def __init__(self, host: str, port: int, pubKc_path: str, pubKts_path: str):
         self.host = host
         self.port = port
         self.state = STATE_HANDSHAKE
@@ -26,10 +26,12 @@ class TSSClient:
         
         with open(pubKc_path, "rb") as f:
             self.pubKc = serialization.load_pem_public_key(f.read())
+        with open(pubKts_path, "rb") as f:
+            self.pubKts = serialization.load_pem_public_key(f.read())
 
     def run(self):
-        self.sock.connect((self.host, self.port))
         try:
+            self.sock.connect((self.host, self.port))
             while True:
                 if self.state == STATE_HANDSHAKE:
                     self._handshake()
@@ -40,6 +42,8 @@ class TSSClient:
                 elif self.state == STATE_LOGOUT:
                     self.sock.close()
                     break
+        except (ConnectionResetError, BrokenPipeError):
+            print("Connection closed by the server.")
         except KeyboardInterrupt:
             print("Exiting...")
         except Exception as e:
@@ -79,7 +83,7 @@ class TSSClient:
         shared_secret = eph_priv_c.exchange(ec.ECDH(), server_eph_pub)
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
-            length=32, #64???
+            length=32,
             salt=client_nonce + server_nonce,
             info=b"TSS v1 session key"
         )
@@ -107,18 +111,53 @@ class TSSClient:
         print("\n--- MENU ---")
         print("1. Request Timestamp")
         print("2. Balance")
-        print("3. Logout")
-        choice = input("Scelta: ")
+        print("3. Verify Timestamp")
+        print("4. Logout")
+
+        choice = input("Type your choice: ")
         
         if choice == "1":
             self._request_timestamp()
         elif choice == "2":
             self._request_balance()
         elif choice == "3":
+            self._verify_timestamp()
+        elif choice == "4":
             print("Logging out...")
             self.state = STATE_LOGOUT
         else:
             print("Invalid choice. Please try again.")
+
+
+    def _verify_timestamp(self):
+        file_path = input("Insert the path of the file to verify: ")
+        if not os.path.exists(file_path):
+            print("File not found.")
+            return
+        timestamp_path = input("Insert the path of the timestamp file: ")
+        if not os.path.exists(timestamp_path):
+            print("Timestamp file not found.")
+            return
+        with open(timestamp_path, "r") as f:
+            timestamp_data = json.load(f)
+        with open(file_path, "rb") as f:
+            digest = hashes.Hash(hashes.SHA256())
+            while chunk := f.read(8192):
+                digest.update(chunk)
+            file_hash = digest.finalize()
+
+        if file_hash.hex() == timestamp_data["hash"]:
+            msg_to_verify = bytes.fromhex(timestamp_data["hash"]) + struct.pack(">Q", timestamp_data["time"])
+            signature = bytes.fromhex(timestamp_data["signature"])
+            try:
+                self.pubKts.verify(signature, msg_to_verify, ec.ECDSA(hashes.SHA256()))
+                print("Timestamp is valid and signature is verified.")
+            except InvalidSignature:
+                print("Invalid signature. Timestamp verification failed.")
+        else:
+            print("File hash does not match the hash in the timestamp. Verification failed.")
+
+
 
     def _request_timestamp(self):
         filepath = input("Insert the path of the file to timestamp: ")
@@ -163,5 +202,5 @@ class TSSClient:
             print(f"Timestamp consumed: {nc}, Timestamp available: {nr}")
 
 if __name__ == '__main__':
-    client = TSSClient('127.0.0.1', 65432, "keys/pubKc.pem")
+    client = TSSClient('127.0.0.1', 65432, "keys/pubKc.pem", "keys/pubKts.pem")
     client.run()

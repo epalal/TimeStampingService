@@ -1,4 +1,5 @@
 import struct
+from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -48,13 +49,14 @@ class SecureChannel:
 
     def __init__(self, conn, session_key: bytes, role: int):
         if len(session_key) != 32:
-            raise ValueError("La chiave di sessione per AES-256-GCM deve essere di 32 byte.")
+            raise ValueError("AES-GCM session key must be 256 bits")
         self.conn = conn
         self.aesgcm = AESGCM(session_key)
         self.role = role
         self.send_seq = 0
         self.recv_seq = 0
         self.peer_role = self.ROLE_CLIENT if role == self.ROLE_SERVER else self.ROLE_SERVER
+
 
     def _build_iv(self, role: int, seqno: int) -> bytes:
         return struct.pack('!B 3x Q', role, seqno)
@@ -73,7 +75,7 @@ class SecureChannel:
 
         self.send_seq += 1
 
-    def recv_secure(self) -> tuple[int, bytes]:
+    def recv_secure(self) -> tuple[None, None] | tuple[Any, bytes]:
         frame_header = recv_exact(self.conn, 4)
         if not frame_header:
             return None, None
