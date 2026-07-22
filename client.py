@@ -96,7 +96,10 @@ class TSSClient:
     def _login(self):
         username = input("Username: ")
         password = input("Password: ")
-        payload = f"{username}\x00{password}".encode('utf-8')
+        user_bytes = username.encode("utf-8")
+        pass_bytes = password.encode("utf-8")
+        fmt = f"!HH{len(user_bytes)}s{len(pass_bytes)}s"
+        payload = struct.pack(fmt, len(user_bytes), len(pass_bytes), user_bytes, pass_bytes)
         self.secure_channel.send_secure(MSG_TYPE_AUTH, payload)
         msg_type, response = self.secure_channel.recv_secure()
         if msg_type == MSG_TYPE_AUTH_SUCCESS:

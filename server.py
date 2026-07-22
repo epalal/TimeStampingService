@@ -103,7 +103,9 @@ class ClientHandler(threading.Thread):
                                 continue
 
                             try:
-                                username_bytes, password_bytes = payload.split(b'\x00', 1)
+                                u_len, p_len = struct.unpack('!HH', payload[:4])
+                                username_bytes = payload[4:4+u_len]
+                                password_bytes = payload[4+u_len:4+u_len+p_len]
                                 username = username_bytes.decode('utf-8')
                                 password = password_bytes.decode('utf-8')
                             except ValueError:
