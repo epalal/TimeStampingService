@@ -1,4 +1,5 @@
 import os
+import random
 import sqlite3
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -83,14 +84,16 @@ def find_user(username, password):
     conn = sqlite3.connect('users.db')
     cur = conn.cursor()
     cur.execute('''
-                        SELECT passwd_hash, salt FROM users WHERE username = ?
-                        ''', (
-        username,
-    ))
+                SELECT passwd_hash, salt
+                FROM users
+                WHERE username = ?
+                ''', (username,))
     row = cur.fetchone()
-    conn.commit()
     conn.close()
     if row is None:
+        fake_hash = os.urandom(32).hex()
+        fake_salt = os.urandom(16).hex()
+        verify_hash(fake_hash, fake_salt, password)
         return False
     passwd_hash, salt = row
     if passwd_hash is not None and salt is not None:

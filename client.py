@@ -90,7 +90,7 @@ class TSSClient:
         session_key = hkdf.derive(shared_secret)
         self.session_key = session_key
         self.secure_channel = SecureChannel(self.sock, self.session_key, SecureChannel.ROLE_CLIENT)
-        print("Handshake completed. Perfect Forward Secrecy guaranteed.")
+        print("Handshake completed.")
         self.state = STATE_LOGIN
 
     def _login(self):
@@ -103,7 +103,7 @@ class TSSClient:
         self.secure_channel.send_secure(MSG_TYPE_AUTH, payload)
         msg_type, response = self.secure_channel.recv_secure()
         if msg_type == MSG_TYPE_AUTH_SUCCESS:
-            print("Succesful Login!")
+            print("Successful Login!")
             self.state = STATE_READY
         elif msg_type == MSG_TYPE_AUTH_FAILED:
             print("Login failed.")
