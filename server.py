@@ -165,7 +165,8 @@ def main():
     host = '127.0.0.1'
     port = 65432
     db_lock = threading.Lock()
-    create_db()
+    if not os.path.exists('users.db'):
+        create_db()
 
     with open("keys/privKc.pem", "rb") as f:
         privKc = serialization.load_pem_private_key(f.read(), password=None)
