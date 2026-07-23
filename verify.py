@@ -17,7 +17,11 @@ def verify_timestamp(pubKts):
         print("Timestamp file not found.")
         return
     with open(timestamp_path, "r") as f:
-        timestamp_data = json.load(f)
+        try:
+            timestamp_data = json.load(f)
+        except json.JSONDecodeError:
+            print("Invalid timestamp file format.")
+            return
     with open(file_path, "rb") as f:
         digest = hashes.Hash(hashes.SHA256())
         while chunk := f.read(8192):
