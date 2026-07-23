@@ -114,8 +114,7 @@ class TSSClient:
         print("\n--- MENU ---")
         print("1. Request Timestamp")
         print("2. Balance")
-        print("3. Verify Timestamp")
-        print("4. Logout")
+        print("3. Logout")
 
         choice = input("Type your choice: ")
         
@@ -124,41 +123,10 @@ class TSSClient:
         elif choice == "2":
             self._request_balance()
         elif choice == "3":
-            self._verify_timestamp()
-        elif choice == "4":
             print("Logging out...")
             self.state = STATE_LOGOUT
         else:
             print("Invalid choice. Please try again.")
-
-
-    def _verify_timestamp(self):
-        file_path = input("Insert the path of the file to verify: ")
-        if not os.path.exists(file_path):
-            print("File not found.")
-            return
-        timestamp_path = input("Insert the path of the timestamp file: ")
-        if not os.path.exists(timestamp_path):
-            print("Timestamp file not found.")
-            return
-        with open(timestamp_path, "r") as f:
-            timestamp_data = json.load(f)
-        with open(file_path, "rb") as f:
-            digest = hashes.Hash(hashes.SHA256())
-            while chunk := f.read(8192):
-                digest.update(chunk)
-            file_hash = digest.finalize()
-
-        if file_hash.hex() == timestamp_data["hash"]:
-            msg_to_verify = bytes.fromhex(timestamp_data["hash"]) + struct.pack(">Q", timestamp_data["time"])
-            signature = bytes.fromhex(timestamp_data["signature"])
-            try:
-                self.pubKts.verify(signature, msg_to_verify, ec.ECDSA(hashes.SHA256()))
-                print("Timestamp is valid and signature is verified.")
-            except InvalidSignature:
-                print("Invalid signature. Timestamp verification failed.")
-        else:
-            print("File hash does not match the hash in the timestamp. Verification failed.")
 
 
 

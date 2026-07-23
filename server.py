@@ -8,6 +8,7 @@ from shared import MSG_TYPE_AUTH, MSG_TYPE_AUTH_FAILED,MSG_TYPE_BALANCE, MSG_TYP
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.exceptions import InvalidSignature
 from db import create_db, find_user, ask_balance, use_token
 import threading
 
