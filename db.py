@@ -1,8 +1,8 @@
 import os
-import random
 import sqlite3
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.exceptions import InvalidKey
 
 
 def create_db():
@@ -51,8 +51,9 @@ def verify_hash(passwd_hash: str, salt: str, password: str) -> bool:
     try:
         kdf.verify(password.encode('utf-8'), bytes.fromhex(passwd_hash))
         return True
-    except ValueError:
+    except (ValueError, InvalidKey):
         return False
+
 
 
 def create_user(username: str, passwd: str, tokens: int = 10, token_consumed: int = 0):
