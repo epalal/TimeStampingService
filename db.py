@@ -19,7 +19,7 @@ def create_db():
                     tokens_consumed INTEGER DEFAULT 0)
                 ''')
     create_user("alice", "123")
-    create_user("bob", "123", tokens=1, token_consumed = 9)
+    create_user("bob", "123", tokens=0, token_consumed = 10)
     conn.commit()
     conn.close()
 
